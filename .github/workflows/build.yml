@@ -32,17 +32,17 @@ jobs:
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
-          # Using a more recent Clang version (r522815 is common for Android 15/Lineage 22)
-          git clone --depth=1 \
-            https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r522815 \
-            clang
-          # Note: Modern kernels often use LLVM=1 instead of separate GCC wrappers
-          git clone --depth=1 \
-            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
-            gcc64
-          git clone --depth=1 \
-            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
-            gcc32
+          # Use Google's official Android Clang storage (faster and public)
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-bin
+          
+          # Use LineageOS GCC mirrors
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+          
+          # Organize Clang path (The Google repo contains many versions, we pick the one you need)
+          # For Lineage 22.1, r522815 is recommended. If you need r487747, change it below.
+          CLANG_VER=clang-r487747
+          echo "CLANG_PATH=$HOME/toolchains/clang-bin/$CLANG_VER/bin" >> $GITHUB_ENV
 
       - name: Set build environment
         run: |
