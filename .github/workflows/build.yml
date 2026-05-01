@@ -28,33 +28,41 @@ jobs:
             lzop pngcrush rsync schedtool squashfs-tools \
             xsltproc zip zlib1g-dev python3 python-is-python3 python2
 
-      - name: Download Toolchains (ULTRA FAST)
+      - name: Download Toolchains
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
 
-          # 1. Descargar Clang r487747 usando Sparse Checkout (Solo baja lo necesario)
-          echo "--- Descargando Clang r487747 (Solo archivos necesarios) ---"
-          git clone --depth=1 --filter=blob:none --sparse https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-temp
-          cd clang-temp
+          # 1. Descargar Clang r487747 (Método Robusto)
+          echo "--- Descargando Clang r487747 ---"
+          git clone --depth=1 --filter=blob:none --sparse https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-sdk
+          cd clang-sdk
           git sparse-checkout set clang-r487747
+          # Forzar la aparición de los archivos
+          git checkout
+          # Mover el contenido a la carpeta final
           mv clang-r487747 ../clang
           cd ..
-          rm -rf clang-temp
+          rm -rf clang-sdk
 
-          # 2. Descargar GCC
+          # 2. Descargar GCC (Necesario para el LG G8 / SD855)
           echo "--- Descargando GCC 64 y 32 bits ---"
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
       - name: Set build environment
         run: |
-          # Añadir binarios al PATH
-          echo "$HOME/toolchains/clang/bin" >> $GITHUB_PATH
-          echo "$HOME/toolchains/gcc64/bin" >> $GITHUB_PATH
-          echo "$HOME/toolchains/gcc32/bin" >> $GITHUB_PATH
+          # Rutas absolutas para evitar confusiones
+          CLANG_BIN="$HOME/toolchains/clang/bin"
+          GCC64_BIN="$HOME/toolchains/gcc64/bin"
+          GCC32_BIN="$HOME/toolchains/gcc32/bin"
+
+          # Añadir al PATH de la sesión
+          echo "$CLANG_BIN" >> $GITHUB_PATH
+          echo "$GCC64_BIN" >> $GITHUB_PATH
+          echo "$GCC32_BIN" >> $GITHUB_PATH
           
-          # Variables de entorno
+          # Variables para el compilador
           {
             echo "ARCH=arm64"
             echo "SUBARCH=arm64"
@@ -85,7 +93,8 @@ jobs:
 
       - name: Build kernel
         run: |
-          # Compilación principal
+          # Aseguramos que el log exista desde el inicio
+          touch build.log
           make O=out \
             ARCH=arm64 \
             CC="ccache clang" \
