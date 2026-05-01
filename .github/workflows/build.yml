@@ -26,26 +26,34 @@ jobs:
             lib32z1-dev liblz4-tool libncurses5-dev \
             libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
             lzop pngcrush rsync schedtool squashfs-tools \
-            xsltproc zip zlib1g-dev python3 python-is-python3
+            xsltproc zip zlib1g-dev python3 python-is-python3 python2
 
       - name: Download Toolchains
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
-          # Descarga de Clang (LineageOS r487747)
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747 clang
-          # Descarga de GCC (Necesarios para headers y soporte de 32 bits)
+          
+          # Evitar que Git pida credenciales y falle el proceso
+          export GIT_TERMINAL_PROMPT=0
+          
+          echo "--- Descargando Clang r487747 desde Google ---"
+          # Descargamos solo la versión r487747 directamente del mirror de Google
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b master clang-temp
+          mv clang-temp/clang-r487747 clang
+          rm -rf clang-temp
+
+          echo "--- Descargando GCC 64 y 32 bits ---"
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
       - name: Set build environment
         run: |
-          # Añadir binarios al PATH de GitHub Actions de forma persistente
+          # Añadir binarios al PATH de forma persistente
           echo "$HOME/toolchains/clang/bin" >> $GITHUB_PATH
           echo "$HOME/toolchains/gcc64/bin" >> $GITHUB_PATH
           echo "$HOME/toolchains/gcc32/bin" >> $GITHUB_PATH
           
-          # Definir variables de entorno para los siguientes pasos
+          # Definir variables de entorno globales
           {
             echo "ARCH=arm64"
             echo "SUBARCH=arm64"
@@ -74,12 +82,9 @@ jobs:
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
             lineageos_alpha_defconfig
 
-      - name: Verify flags in generated .config
-        run: |
-          grep -E "CONFIG_IPC_NS|CONFIG_PID_NS|CONFIG_NAMESPACES" out/.config || echo "⚠️ Flags no encontrados, revisa el defconfig"
-
       - name: Build kernel
         run: |
+          # Usamos 2>&1 para capturar todos los errores en el log
           make O=out \
             ARCH=arm64 \
             CC="ccache clang" \
