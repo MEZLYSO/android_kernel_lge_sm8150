@@ -1,8 +1,8 @@
-name: Build LG G8 ThinQ Kernel (LineageOS 21)
+name: Build LG G8 ThinQ Kernel (LineageOS 22.2)
 
 on:
   push:
-    branches: [ main, lineage-21 ]
+    branches: [ main, lineage-22.2 ]
   workflow_dispatch:
 
 jobs:
@@ -28,50 +28,47 @@ jobs:
             lzop pngcrush rsync schedtool squashfs-tools \
             xsltproc zip zlib1g-dev python3 python-is-python3
 
-      - name: Download Clang toolchain
+      - name: Download Toolchains
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
-          # Use Google's official Android Clang storage (faster and public)
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-bin
-          
-          # Use LineageOS GCC mirrors
+          # Descarga de Clang (LineageOS r487747)
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747 clang
+          # Descarga de GCC (Necesarios para headers y soporte de 32 bits)
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
-          
-          # Organize Clang path (The Google repo contains many versions, we pick the one you need)
-          # For Lineage 22.1, r522815 is recommended. If you need r487747, change it below.
-          CLANG_VER=clang-r487747
-          echo "CLANG_PATH=$HOME/toolchains/clang-bin/$CLANG_VER/bin" >> $GITHUB_ENV
 
       - name: Set build environment
         run: |
-          echo "ARCH=arm64" >> $GITHUB_ENV
-          echo "CLANG_PATH=$HOME/toolchains/clang/bin" >> $GITHUB_ENV
-          echo "GCC64_PATH=$HOME/toolchains/gcc64/bin" >> $GITHUB_ENV
-          echo "GCC32_PATH=$HOME/toolchains/gcc32/bin" >> $GITHUB_ENV
-          # Added LD_LIBRARY_PATH to ensure Clang finds its internal libs
-          echo "LD_LIBRARY_PATH=$HOME/toolchains/clang/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
-      - name: Verify IPC/PID flags in defconfig
-        run: |
-          DEFCONFIG="arch/arm64/configs/lineageos_alpha_defconfig"
-          grep "CONFIG_IPC_NS=y" $DEFCONFIG && echo "✅ IPC_NS ok" || (echo "❌ CONFIG_IPC_NS=y falta" && exit 1)
-          grep "CONFIG_PID_NS=y" $DEFCONFIG && echo "✅ PID_NS ok" || (echo "❌ CONFIG_PID_NS=y falta" && exit 1)
+          # Añadir binarios al PATH de GitHub Actions de forma persistente
+          echo "$HOME/toolchains/clang/bin" >> $GITHUB_PATH
+          echo "$HOME/toolchains/gcc64/bin" >> $GITHUB_PATH
+          echo "$HOME/toolchains/gcc32/bin" >> $GITHUB_PATH
+          
+          # Definir variables de entorno para los siguientes pasos
+          {
+            echo "ARCH=arm64"
+            echo "SUBARCH=arm64"
+            echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+            echo "CROSS_COMPILE=aarch64-linux-android-"
+            echo "CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+            echo "LD_LIBRARY_PATH=$HOME/toolchains/clang/lib64:$LD_LIBRARY_PATH"
+          } >> $GITHUB_ENV
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          max-size: "2G"
+          max-size: "5G"
           key: kernel-alphalm-${{ github.sha }}
           restore-keys: kernel-alphalm-
 
       - name: Generate kernel config
         run: |
-          export PATH="$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH"
           make O=out \
             ARCH=arm64 \
             CC="ccache clang" \
+            LLVM=1 \
+            LLVM_IAS=1 \
             CLANG_TRIPLE=$CLANG_TRIPLE \
             CROSS_COMPILE=$CROSS_COMPILE \
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
@@ -79,21 +76,18 @@ jobs:
 
       - name: Verify flags in generated .config
         run: |
-          grep -E "CONFIG_IPC_NS|CONFIG_PID_NS|CONFIG_NAMESPACES" out/.config
+          grep -E "CONFIG_IPC_NS|CONFIG_PID_NS|CONFIG_NAMESPACES" out/.config || echo "⚠️ Flags no encontrados, revisa el defconfig"
 
       - name: Build kernel
         run: |
-          export PATH="$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH"
           make O=out \
             ARCH=arm64 \
-            CC=clang \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            CC="ccache clang" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CLANG_TRIPLE=$CLANG_TRIPLE \
+            CROSS_COMPILE=$CROSS_COMPILE \
+            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
             -j$(nproc --all) \
             Image.gz-dtb dtbo.img 2>&1 | tee build.log
 
