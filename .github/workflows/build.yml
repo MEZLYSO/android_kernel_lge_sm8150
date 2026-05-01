@@ -32,9 +32,11 @@ jobs:
         run: |
           mkdir -p $HOME/toolchains
           cd $HOME/toolchains
+          # Using a more recent Clang version (r522815 is common for Android 15/Lineage 22)
           git clone --depth=1 \
-            https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747 \
+            https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r522815 \
             clang
+          # Note: Modern kernels often use LLVM=1 instead of separate GCC wrappers
           git clone --depth=1 \
             https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
             gcc64
@@ -45,13 +47,11 @@ jobs:
       - name: Set build environment
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
-          echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "CLANG_PATH=$HOME/toolchains/clang/bin" >> $GITHUB_ENV
           echo "GCC64_PATH=$HOME/toolchains/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$HOME/toolchains/gcc32/bin" >> $GITHUB_ENV
-          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
-          echo "CROSS_COMPILE_ARM32=arm-linux-androideabi-" >> $GITHUB_ENV
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          # Added LD_LIBRARY_PATH to ensure Clang finds its internal libs
+          echo "LD_LIBRARY_PATH=$HOME/toolchains/clang/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Verify IPC/PID flags in defconfig
         run: |
@@ -86,10 +86,14 @@ jobs:
           export PATH="$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH"
           make O=out \
             ARCH=arm64 \
-            CC="ccache clang" \
-            CLANG_TRIPLE=$CLANG_TRIPLE \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
+            CC=clang \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             -j$(nproc --all) \
             Image.gz-dtb dtbo.img 2>&1 | tee build.log
 
